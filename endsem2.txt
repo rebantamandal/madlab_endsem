@@ -1,0 +1,589 @@
+endsem2
+
+MainActivity.java
+
+package com.example.endsem2;
+
+import android.app.DatePickerDialog;
+import android.content.Intent;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.*;
+import androidx.appcompat.app.AppCompatActivity;
+
+import java.util.Calendar;
+
+public class MainActivity extends AppCompatActivity {
+
+    EditText etName, etAge;
+    RadioButton rbMale, rbFemale, rbothers;
+    CheckBox cbDance, cbMusic, cbGaming;
+    Spinner spBranch;
+    Button btnSave, btnView, btnPickDate;
+    SeekBar seekSkill;
+    TextView tvSkillValue, tvDate;
+    DBHelper dbHelper;
+    String selectedDate = "";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        etName = findViewById(R.id.etName);
+        etAge = findViewById(R.id.etAge);
+        rbMale = findViewById(R.id.rbMale);
+        rbFemale = findViewById(R.id.rbFemale);
+        rbothers = findViewById(R.id.rbothers);
+        cbDance = findViewById(R.id.cbDance);
+        cbGaming = findViewById(R.id.cbGaming);
+        cbMusic = findViewById(R.id.cbMusic);
+        spBranch = findViewById(R.id.spBranch);
+        btnSave = findViewById(R.id.btnSave);
+        btnView = findViewById(R.id.btnView);
+        btnPickDate = findViewById(R.id.btnPickDate);
+        tvDate = findViewById(R.id.tvDate);
+        seekSkill = findViewById(R.id.seekSkill);
+        tvSkillValue = findViewById(R.id.tvSkillValue);
+
+        dbHelper = new DBHelper(this);
+
+        seekSkill.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                tvSkillValue.setText("Selected: " + progress);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        btnPickDate.setOnClickListener(v -> {
+            Calendar calendar = Calendar.getInstance();
+            int year = calendar.get(Calendar.YEAR);
+            int month = calendar.get(Calendar.MONTH);
+            int day = calendar.get(Calendar.DAY_OF_MONTH);
+
+            DatePickerDialog datePickerDialog = new DatePickerDialog(MainActivity.this,
+                    (view, year1, month1, dayOfMonth) -> {
+                        selectedDate = dayOfMonth + "/" + (month1 + 1) + "/" + year1;
+                        tvDate.setText("Selected: " + selectedDate);
+                    }, year, month, day);
+            datePickerDialog.show();
+        });
+
+        btnSave.setOnClickListener(view -> {
+            String name = etName.getText().toString().trim();
+            String ageStr = etAge.getText().toString().trim();
+            if (name.isEmpty() || ageStr.isEmpty()) {
+                Toast.makeText(MainActivity.this, "Data not entered", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            int age = Integer.parseInt(ageStr);
+            String gender = rbMale.isChecked() ? "Male" : rbFemale.isChecked() ? "Female" : rbothers.isChecked() ? "Others" : "Not Specified";
+            StringBuilder hobbies = new StringBuilder();
+            if (cbDance.isChecked()) hobbies.append("Dance ");
+            if (cbMusic.isChecked()) hobbies.append("Music ");
+            if (cbGaming.isChecked()) hobbies.append("Gaming");
+            String branch = spBranch.getSelectedItem().toString();
+            int skill = seekSkill.getProgress();
+
+            boolean inserted = dbHelper.insertStudent(name, gender, hobbies.toString().trim(), branch, age, selectedDate, skill);
+            if (inserted)
+                Toast.makeText(MainActivity.this, "Data saved successfully", Toast.LENGTH_SHORT).show();
+            else
+                Toast.makeText(MainActivity.this, "Error saving data", Toast.LENGTH_SHORT).show();
+        });
+
+        btnView.setOnClickListener(v -> {
+            startActivity(new Intent(MainActivity.this, ViewActivity.class));
+        });
+    }
+}
+
+DBHelper.java
+
+package com.example.endsem2;
+
+import android.content.Context;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.content.ContentValues;
+import android.database.Cursor;
+
+public class DBHelper extends SQLiteOpenHelper {
+    public static final String DB_NAME = "StudentDB";
+    public static final int DB_VERSION = 3;
+
+    public DBHelper(Context context) {
+        super(context, DB_NAME, null, DB_VERSION);
+    }
+
+    @Override
+    public void onCreate(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE student (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, gender TEXT, hobbies TEXT, branch TEXT, age INTEGER, dob TEXT, skill INTEGER)");
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        db.execSQL("DROP TABLE IF EXISTS student");
+        onCreate(db);
+    }
+
+    public boolean insertStudent(String name, String gender, String hobbies, String branch, int age, String dob, int skill) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("name", name);
+        cv.put("gender", gender);
+        cv.put("hobbies", hobbies);
+        cv.put("branch", branch);
+        cv.put("age", age);
+        cv.put("dob", dob);
+        cv.put("skill", skill);
+        long result = db.insert("student", null, cv);
+        return result != -1;
+    }
+
+    public void deleteStudent(int studentId) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete("student", "id = ?", new String[]{String.valueOf(studentId)});
+    }
+
+    public void updateStudent(int studentId, String newName) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("name", newName);
+        db.update("student", cv, "id = ?", new String[]{String.valueOf(studentId)});
+    }
+
+    public Cursor getAllStudents() {
+        SQLiteDatabase db = this.getReadableDatabase();
+        return db.rawQuery("SELECT * FROM student", null);
+    }
+}
+
+ViewActivity.java
+
+package com.example.endsem2;
+
+import android.app.AlertDialog;
+import android.database.Cursor;
+import android.os.Bundle;
+import android.view.ContextMenu;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.*;
+import androidx.appcompat.app.AppCompatActivity;
+
+import java.util.ArrayList;
+
+public class ViewActivity extends AppCompatActivity {
+
+    GridView gridView;
+    ArrayAdapter<String> adapter;
+    ArrayList<String> studentList = new ArrayList<>();
+    DBHelper dbHelper;
+    int selectedItemIndex = -1;
+    ArrayList<Integer> studentIds = new ArrayList<>();
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_view);
+
+        gridView = findViewById(R.id.gridView);
+        dbHelper = new DBHelper(this);
+
+        loadStudents();
+
+        registerForContextMenu(gridView);
+
+        gridView.setOnItemLongClickListener((adapterView, view, i, l) -> {
+            selectedItemIndex = i;
+            return false;
+        });
+    }
+
+    void loadStudents() {
+        studentList.clear();
+        studentIds.clear();
+        Cursor cursor = dbHelper.getAllStudents();
+        while (cursor.moveToNext()) {
+            int id = cursor.getInt(0);
+            studentIds.add(id);
+            String student = "ID: " + id +
+                    "\nName: " + cursor.getString(1) +
+                    "\nGender: " + cursor.getString(2) +
+                    "\nHobbies: " + cursor.getString(3) +
+                    "\nBranch: " + cursor.getString(4) +
+                    "\nAge: " + cursor.getInt(5) +
+                    "\nDOB: " + cursor.getString(6) +
+                    "\nSkill: " + cursor.getInt(7);
+            studentList.add(student);
+        }
+        adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, studentList);
+        gridView.setAdapter(adapter);
+    }
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
+        getMenuInflater().inflate(R.menu.context_menu, menu);
+    }
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+        if (selectedItemIndex == -1) return false;
+
+        int studentId = studentIds.get(selectedItemIndex);
+
+        if (item.getItemId() == R.id.menu_view) {
+            Toast.makeText(this, studentList.get(selectedItemIndex), Toast.LENGTH_SHORT).show();
+            return true;
+        } else if (item.getItemId() == R.id.menu_edit) {
+            showEditDialog(studentId);
+            return true;
+        } else if (item.getItemId() == R.id.menu_delete) {
+            showDeleteConfirmation(studentId);
+            return true;
+        }
+
+        return super.onContextItemSelected(item);
+    }
+
+    void showEditDialog(int studentId) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Edit Student Name");
+
+        final EditText input = new EditText(this);
+        input.setHint("Enter new name");
+        builder.setView(input);
+
+        builder.setPositiveButton("Update", (dialog, which) -> {
+            String newName = input.getText().toString().trim();
+            if (!newName.isEmpty()) {
+                dbHelper.updateStudent(studentId, newName);
+                Toast.makeText(ViewActivity.this, "Name updated", Toast.LENGTH_SHORT).show();
+                loadStudents();
+            }
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    void showDeleteConfirmation(int studentId) {
+        new AlertDialog.Builder(this)
+                .setTitle("Confirm Delete")
+                .setMessage("Are you sure you want to delete this student?")
+                .setPositiveButton("Yes", (dialog, which) -> {
+                    dbHelper.deleteStudent(studentId);
+                    Toast.makeText(ViewActivity.this, "Student deleted", Toast.LENGTH_SHORT).show();
+                    loadStudents();
+                })
+                .setNegativeButton("No", null)
+                .show();
+    }
+}
+
+LoginActivity.java
+
+package com.example.endsem2;
+
+import android.content.Intent;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.widget.*;
+import androidx.appcompat.app.AppCompatActivity;
+
+public class LoginActivity extends AppCompatActivity {
+
+    EditText etEmail, etPassword;
+    Button btnLogin;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_login);
+
+        etEmail = findViewById(R.id.etEmail);
+        etPassword = findViewById(R.id.etPassword);
+        btnLogin = findViewById(R.id.btnLogin);
+
+        btnLogin.setOnClickListener(v -> {
+            String email = etEmail.getText().toString().trim();
+            String password = etPassword.getText().toString().trim();
+
+            if (TextUtils.isEmpty(email) || TextUtils.isEmpty(password)) {
+                Toast.makeText(LoginActivity.this, "Enter email and password", Toast.LENGTH_SHORT).show();
+            } else {
+                // You can replace this with real authentication
+                if (email.equals("admin@example.com") && password.equals("123456")) {
+                    startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                    finish();
+                } else {
+                    Toast.makeText(LoginActivity.this, "Invalid credentials", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+}
+
+
+activity_main.xml
+
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:paddingTop="24dp">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <EditText
+            android:id="@+id/etName"
+            android:hint="Enter Name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="10dp" />
+
+        <EditText
+            android:id="@+id/etAge"
+            android:hint="Enter Age"
+            android:inputType="number"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="10dp"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Gender"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <RadioGroup
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <RadioButton
+                android:id="@+id/rbMale"
+                android:text="Male"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+            <RadioButton
+                android:id="@+id/rbFemale"
+                android:text="Female"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+            <RadioButton
+                android:id="@+id/rbothers"
+                android:text="Others"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hobbies"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <CheckBox
+            android:id="@+id/cbDance"
+            android:text="Dance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+        <CheckBox
+            android:id="@+id/cbMusic"
+            android:text="Music"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+        <CheckBox
+            android:id="@+id/cbGaming"
+            android:text="Gaming"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Branch"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <Spinner
+            android:id="@+id/spBranch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:entries="@array/branches" />
+
+        <!-- Date Picker -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Date of Birth"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <Button
+            android:id="@+id/btnPickDate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pick Date of Birth" />
+
+        <TextView
+            android:id="@+id/tvDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No date selected"
+            android:layout_marginTop="4dp" />
+
+        <!-- Skill Level SeekBar -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Skill Level"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <SeekBar
+            android:id="@+id/seekSkill"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="10" />
+
+        <TextView
+            android:id="@+id/tvSkillValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Selected: 0"
+            android:layout_marginTop="4dp" />
+
+        <!-- Buttons -->
+        <Button
+            android:id="@+id/btnSave"
+            android:text="Save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#2196F3"
+            android:textColor="#FFFFFF"
+            android:layout_marginTop="16dp" />
+
+        <Button
+            android:id="@+id/btnView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#4CAF50"
+            android:text="View Students"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+</ScrollView>
+
+activity_view.xml
+
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="10dp"
+    android:fitsSystemWindows="true">
+
+    <GridView
+        android:id="@+id/gridView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:numColumns="1"
+        android:verticalSpacing="12dp"
+        android:horizontalSpacing="10dp"
+        android:clipToPadding="false" />
+</FrameLayout>
+
+activity_login.xml
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="24dp"
+    android:orientation="vertical"
+    android:gravity="center">
+
+    <EditText
+        android:id="@+id/etEmail"
+        android:hint="Email"
+        android:inputType="textEmailAddress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp" />
+
+    <EditText
+        android:id="@+id/etPassword"
+        android:hint="Password"
+        android:inputType="textPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:layout_marginTop="12dp" />
+
+    <Button
+        android:id="@+id/btnLogin"
+        android:text="Login"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#2196F3"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="16dp" />
+</LinearLayout>
+
+context_menu.xml (in menu)
+
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/menu_view" android:title="View"/>
+    <item android:id="@+id/menu_edit" android:title="Edit"/>
+    <item android:id="@+id/menu_delete" android:title="Delete"/>
+</menu>
+
+strings.xml
+
+<resources>
+    <string name="app_name">endsem2</string>
+    <string-array name="branches">
+        <item>Computer Science</item>
+        <item>Electronics</item>
+        <item>Mechanical</item>
+        <item>Civil</item>
+    </string-array>
+</resources>
+
+AndroidManifest.xml
+
+<activity android:name=".LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ViewActivity"/>
